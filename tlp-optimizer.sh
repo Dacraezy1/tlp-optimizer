@@ -80,19 +80,21 @@ get_battery_health() {
     if ! command -v upower &> /dev/null; then
         echo "unknown"
         return
-    }
+    fi
 
-    local battery_path=$(upower -e | grep 'BAT')
+    local battery_path
+    battery_path=$(upower -e | grep 'BAT')
     if [ -z "$battery_path" ]; then
         echo "no_battery"
         return
-    }
+    fi
 
-    local energy_full=$(upower -i "$battery_path" | grep 'energy-full:' | awk '{print $2}')
-    local energy_full_design=$(upower -i "$battery_path" | grep 'energy-full-design:' | awk '{print $2}')
+    local energy_full energy_full_design health
+    energy_full=$(upower -i "$battery_path" | awk '/energy-full:/ {print $2}')
+    energy_full_design=$(upower -i "$battery_path" | awk '/energy-full-design:/ {print $2}')
 
     if [ -n "$energy_full" ] && [ -n "$energy_full_design" ]; then
-        local health=$(awk "BEGIN {print ($energy_full/$energy_full_design) * 100}")
+        health=$(awk "BEGIN {printf \"%.2f\", ($energy_full/$energy_full_design)*100}")
         echo "$health"
     else
         echo "unknown"
@@ -101,7 +103,7 @@ get_battery_health() {
 
 # Function to detect storage type
 detect_storage() {
-    if [ -n "$(lsblk -d -o name,rota | grep '0$')" ]; then
+    if [ -n "$(lsblk -d -o name,rota | awk '$2==0 {print $1}')" ]; then
         echo "ssd"
     else
         echo "hdd"
@@ -132,7 +134,7 @@ CPU_SCALING_GOVERNOR_ON_BAT=powersave
 EOF
 
     # CPU driver specific settings
-    case $cpu_driver in
+    case "$cpu_driver" in
         "intel_pstate")
             cat >> /etc/tlp.conf << EOF
 CPU_SCALING_MIN_FREQ_ON_AC=800000
@@ -166,7 +168,7 @@ EOF
     esac
 
     # GPU Settings
-    case $gpu_type in
+    case "$gpu_type" in
         "nvidia")
             cat >> /etc/tlp.conf << EOF
 
@@ -247,7 +249,8 @@ main() {
     echo "======================================================"
 
     # Detect and confirm CPU driver
-    local detected_cpu_driver=$(detect_cpu_driver)
+    local detected_cpu_driver
+    detected_cpu_driver=$(detect_cpu_driver)
     print_info "Detected CPU driver: $detected_cpu_driver"
     read -p "Is this correct? (Y/n/specify different): " cpu_response
     cpu_response=${cpu_response:-Y}
@@ -257,7 +260,8 @@ main() {
     fi
 
     # Detect and confirm GPU
-    local detected_gpu=$(detect_gpu)
+    local detected_gpu
+    detected_gpu=$(detect_gpu)
     print_info "Detected GPU: $detected_gpu"
     read -p "Is this correct? (Y/n/specify different): " gpu_response
     gpu_response=${gpu_response:-Y}
@@ -267,7 +271,8 @@ main() {
     fi
 
     # Detect and confirm storage type
-    local detected_storage=$(detect_storage)
+    local detected_storage
+    detected_storage=$(detect_storage)
     print_info "Detected storage type: $detected_storage"
     read -p "Is this correct? (Y/n/specify different): " storage_response
     storage_response=${storage_response:-Y}
@@ -277,7 +282,8 @@ main() {
     fi
 
     # Get battery health
-    local battery_health=$(get_battery_health)
+    local battery_health
+    battery_health=$(get_battery_health)
     if [ "$battery_health" != "unknown" ] && [ "$battery_health" != "no_battery" ]; then
         print_info "Battery health: ${battery_health}%"
     else
@@ -287,7 +293,7 @@ main() {
     # Backup existing configuration
     if [ -f "/etc/tlp.conf" ]; then
         print_info "Backing up existing configuration..."
-        cp /etc/tlp.conf /etc/tlp.conf.backup.$(date +%Y%m%d_%H%M%S)
+        cp /etc/tlp.conf "/etc/tlp.conf.backup.$(date +%Y%m%d_%H%M%S)"
     fi
 
     # Generate new configuration
